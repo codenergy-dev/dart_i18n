@@ -1,4 +1,4 @@
-name: stringfinder
+name: dart_i18n
 description: A command-line to search for strings marked with i18n() from flutter package localization.
 version: 1.0.0
 # repository: https://github.com/my_org/my_repo

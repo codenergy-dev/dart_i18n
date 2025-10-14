@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:path/path.dart' as path;
 
-import 'package:stringfinder/stringfinder.dart';
+import 'package:dart_i18n/dart_i18n.dart';
 
 const String extractCommand = 'extract';
 const String helpCommand = 'help';

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:stringfinder/stringfinder.dart';
+import 'package:dart_i18n/dart_i18n.dart';
 
 String sk8erPath = '../sk8ers/lib';
 String jsonOutputPath = './example/files/pt_BR.json';

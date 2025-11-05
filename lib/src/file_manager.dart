@@ -57,7 +57,7 @@ class FileManager {
   void writeJsonFile({required String outputFilePath, required Map<String, dynamic> data}) {
     final File file = File(outputFilePath);
     final IOSink sink = file.openWrite();
-    JsonEncoder jsonEncoder = JsonEncoder.withIndent('  ');
+    JsonEncoder jsonEncoder = JsonEncoder.withIndent(' ' * 4);
     String json = jsonEncoder.convert(data);
     sink.write(json.replaceAll(r'\\', r'\'));
     sink.close();

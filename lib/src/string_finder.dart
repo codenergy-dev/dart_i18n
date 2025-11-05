@@ -1,3 +1,7 @@
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+
 class FoundString {
   final String filePath;
   final Map<String, List<int>> stringsPerLine = {};
@@ -11,42 +15,22 @@ class StringFinder {
 
   List<FoundString> stringsFoundPerFile = [];
 
-  void getAllInnerString({required String filePath, required List<String> textLines,}) {
-    FoundString foundStrings = FoundString(filePath: filePath);
-    int lineCount = 1;
-    for(final String line in textLines) {
-      List<String> strings = searchForInnerStrings(text: line, onlyi18nPattern: true);
-      if(strings.isNotEmpty) {
-        for(String string in strings) {
-          foundStrings.stringsPerLine[string] = [];
-          foundStrings.stringsPerLine[string]!.add(lineCount);
-        }
-      }
-      lineCount++;
-    }
-    stringsFoundPerFile.add(foundStrings);
-  }
+  void getAllInnerString({
+    required String filePath,
+    required List<String> textLines,
+  }) {
+    final foundStrings = FoundString(filePath: filePath);
+    final content = textLines.join('\n');
+    final unit = parseString(content: content).unit;
 
-  List<String> searchForInnerStrings({required String text, bool onlyi18nPattern = false}) {
-    // ("|'){1}[^'"]*("|'){1}([.][i][1][8][n][(][)]){1}
-    RegExp pattern = onlyi18nPattern ? RegExp(r'("'
-                                              r"|'){1}[^'"
-                                              r'"]*'
-                                              r'("'
-                                              r"|'){1}([.][i][1][8][n]){1}") : RegExp("[\",']\w*[\",']");
-    Iterable<RegExpMatch> matches = pattern.allMatches(text);
-    List<String> stringsFound = [];
-    for (Match match in matches) {
-      if(match[0] != null) {
-        String treatedMatch = match[0]!.replaceAll('"', '').replaceAll("'", '');
-        if(onlyi18nPattern) {
-          stringsFound.add(treatedMatch.replaceAll('.i18n', ''));
-        } else {
-          stringsFound.add(treatedMatch); 
-        }
+    unit.visitChildren(_I18nVisitor((value, line) {
+      if (!foundStrings.stringsPerLine.containsKey(value)) {
+        foundStrings.stringsPerLine[value] = [];
       }
-    }
-    return stringsFound;
+      foundStrings.stringsPerLine[value]!.add(line);
+    }));
+
+    stringsFoundPerFile.add(foundStrings);
   }
 
   Map<String,List<String>> generateReferenceFileData() {
@@ -98,5 +82,25 @@ class StringFinder {
     else if(removePart && containsPart(text: text)) {return true;}
     else if(removeMapKeys && containsMapKeys(text: text)) {return true;}
     else {return false;}
+  }
+}
+
+class _I18nVisitor extends RecursiveAstVisitor<void> {
+  final void Function(String value, int line) onFound;
+
+  _I18nVisitor(this.onFound);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    // Queremos apenas chamadas do tipo "<string>.i18n()"
+    if (node.methodName.name == 'i18n' && node.target is StringLiteral) {
+      final literal = node.target as StringLiteral;
+      final value = literal.stringValue ?? '';
+      // final lineInfo = node.root.beginToken.lineInfo;
+      // final lineNumber = lineInfo?.getLocation(node.offset).lineNumber ?? 0;
+      // onFound(value, lineNumber);
+      onFound(value, 0);
+    }
+    super.visitMethodInvocation(node);
   }
 }

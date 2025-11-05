@@ -1,11 +1,15 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/args.dart';
+import 'package:dart_i18n/src/dart_i18n_config.dart';
+import 'package:openai_dart/openai_dart.dart';
 import 'package:path/path.dart' as path;
 
 import 'package:dart_i18n/dart_i18n.dart';
 
 const String extractCommand = 'extract';
+const String translateCommand = 'translate';
 const String helpCommand = 'help';
 const String createReferenceFile = 'reference-file';
 const String ignoredDirsOptions = 'ignore-dirs';
@@ -43,6 +47,7 @@ void main(List<String> arguments) {
 
   final parser = ArgParser()
     ..addCommand(extractCommand, extractCommandArgParser)
+    ..addCommand(translateCommand)
     ..addCommand(helpCommand);
 
   ArgResults argResults = parser.parse(arguments);
@@ -57,6 +62,11 @@ void main(List<String> arguments) {
         referenceFile: argResults.command![createReferenceFile] as bool,
         verboseMode: argResults.command![verboseMode] as bool,
       );  
+      break;
+    case translateCommand:
+      translateStrings(
+        i18nDir: argResults.command!.rest[0],
+      );
       break;
     case helpCommand:
       for(final command in parser.commands.keys) {
@@ -157,4 +167,71 @@ Future<void> extractStringsToJson({
   } else {
     exit(0);
   }
+}
+
+Future<void> translateStrings({
+  required String i18nDir,
+}) async {
+  final i18nDirectory = Directory(i18nDir);
+  if (!i18nDirectory.existsSync()) {
+    stderr.writeln('Directory $i18nDir not found.');
+    exit(1);
+  }
+
+  final configFile = File('dart_i18n.json');
+  final configJson = jsonDecode(configFile.readAsStringSync());
+  final config = DartI18nConfig.fromJson(configJson);
+
+  if (config.openaiApiKey == null) {
+    stderr.writeln('Create the dart_i18n.json file and define the openaiApiKey field.');
+    exit(1);
+  }
+
+  final openai = OpenAIClient(apiKey: config.openaiApiKey);
+  final i18nFiles = i18nDirectory.listSync();
+
+  for (var i18n in i18nFiles) {
+    final locale = path.basename(path.withoutExtension(i18n.path));
+    final file = File(i18n.path);
+    final json = file.readAsStringSync();
+    stdout.writeln('Start translation for locale: $locale (${file.path}).');
+    
+    final chatCompletion = await openai.createChatCompletion(
+      request: CreateChatCompletionRequest(
+        model: ChatCompletionModel.modelId('gpt-4o-mini'),
+        responseFormat: ResponseFormatJsonObject(),
+        messages: [
+          ChatCompletionMessage.system(
+            content: 'You are a professional translator.',
+          ),
+          ChatCompletionMessage.user(
+            content: ChatCompletionUserMessageContent.string(
+              'Use the JSON keys to translate the values to the target locale: $locale.\n$json',
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    final response = chatCompletion.choices.first.message.content;
+    if (response?.isNotEmpty != true) {
+      stderr.writeln('OpenAI chat completion returned a null or empty string for $locale.');
+      exit(1);
+    }
+
+    late Map<String, dynamic> jsonLocalized;
+    try {
+      jsonLocalized = jsonDecode(response!);
+    } catch (_) {
+      stderr.writeln('OpenAI chat completion returned a malformed JSON for $locale.');
+      stderr.writeln(response);
+      exit(1);
+    }
+    
+    JsonEncoder jsonEncoder = JsonEncoder.withIndent(' ' * 4);
+    file.writeAsStringSync(jsonEncoder.convert(jsonLocalized));
+    stdout.writeln('- $locale.json was updated');
+  }
+
+  exit(0);
 }
